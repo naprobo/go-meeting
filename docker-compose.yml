@@ -1,0 +1,30 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8082:8082"
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql+asyncpg://db-id:db-password@db:5432/db-name
+      SENDGRID_API_KEY: SG.xxxxxxxxxxxxx.yyyyyyyyyy-_aaaaaaaaaaaaaaaaa
+      MATTERMOST_URL: https://xxx.yyy.zzz
+      MATTERMOST_TOKEN: xxxxxxxxxxxxxx
+      MATTERMOST_TEAM_NAME: xxxxxxxxxxxxxxxx
+    volumes:
+      - ./backend:/app/backend
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: id
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: db-name
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+
+volumes:
+  pgdata:
+

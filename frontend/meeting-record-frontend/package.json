@@ -1,0 +1,31 @@
+{
+  "name": "meeting-record-frontend",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mdi/font": "^7.4.47",
+    "axios": "^1.7.9",
+    "diff-match-patch": "^1.0.5",
+    "file-saver": "^2.0.5",
+    "jszip": "^3.10.1",
+    "pinia": "^3.0.3",
+    "quill": "^2.0.3",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0",
+    "vuetify": "^3.8.11"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/compiler-sfc": "^3.5.13",
+    "@vue/tsconfig": "^0.7.0",
+    "typescript": "~5.7.2",
+    "vite": "^6.1.0",
+    "vue-tsc": "^2.2.2"
+  }
+}

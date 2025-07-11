@@ -1,0 +1,12 @@
+fastapi[all]
+uvicorn
+asyncpg
+sqlalchemy
+bcrypt
+PyJWT
+aiosmtplib
+email-validator
+alembic
+sendgrid
+requests
+

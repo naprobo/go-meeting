@@ -1,0 +1,9 @@
+/* src/assets/style.css */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", 
+                 "Hiragino Sans", "Meiryo", "Noto Sans JP", sans-serif;
+    font-size: 16px;  /* ✅ PC 端默认 */
+    line-height: 1.6;  /* ✅ 增加可读性 */
+    color: #333;  /* ✅ 默认字体颜色 */
+  }
+  
