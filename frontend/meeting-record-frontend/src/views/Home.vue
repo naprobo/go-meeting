@@ -240,7 +240,7 @@ const openMeeting = async (id) => {
       headers: { Authorization: `Bearer ${token}` }
     });
 
-    console.log("✅ 会議データ:", response.data);
+    // console.log("✅ 会議データ:", response.data);
     router.push(`/meeting/${id}`);
   } catch (error) {
     console.error("❌ 会議の取得失敗:", error);

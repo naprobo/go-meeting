@@ -1,5 +1,5 @@
 <template>
-  <v-container class="py-4">
+  <v-container v-if="meetingDetails" class="py-4">
 
     <v-overlay :model-value="loading" class="d-flex justify-center align-center" persistent>
       <v-progress-circular indeterminate size="64"></v-progress-circular>
@@ -280,15 +280,31 @@
           >
           <v-btn
             block
+            :disabled="loadingReportId === report.id"
             :color="clickedReports.has(report.id) ? 'grey-darken-2' : 'primary'"
             variant="elevated"
             class="text-left justify-start py-4 px-3"
             @click="showReport(report)"
-            :prepend-icon="clickedReports.has(report.id) ? 'mdi-email-open' : 'mdi-email'"
           >
-            <span class="text-subtitle-1 font-weight-medium">
-              {{ report.user.fullname || report.user.username }}
-            </span>
+            <template #prepend>
+              <v-icon>
+                {{ clickedReports.has(report.id) ? 'mdi-email-open' : 'mdi-email' }}
+              </v-icon>
+            </template>
+
+            <div class="d-flex align-center">
+              <span class="text-subtitle-1 font-weight-medium">
+                {{ report.user.fullname || report.user.username }}
+              </span>
+              <v-progress-circular
+                v-if="loadingReportId === report.id"
+                indeterminate
+                color="white"
+                size="18"
+                width="2"
+                class="ml-2"
+              />
+            </div>
           </v-btn>
           </v-col>
         </v-row>
@@ -304,7 +320,7 @@
             class="flex-grow-1 bg-grey-lighten-4 overflow-auto pa-4"
             rounded
           >
-            <ul>
+            <ul v-if="selectedReport && selectedReport.reports">
               <li v-for="report in selectedReport.reports" :key="report.id">
                 <div v-for="(project, projectIndex) in report.projects" :key="projectIndex" class="mb-6">
                   <hr class="thick-hr" />
@@ -497,6 +513,8 @@ const editMeeting = ref({
 const showMinutesView = ref(false);  // ✅ 控制【阅览模式】弹窗
 const showMinutesEdit = ref(false);  // ✅ 控制【编辑模式】弹窗
 
+const loadingReportId = ref(null);
+
 const userOptions = computed(() =>
   users.value.map(user => ({
     id: user.id,
@@ -646,7 +664,7 @@ const fetchMeetingDetails = async () => {
   try {
     const response = await api.get(`/api/meetings/${meetingId.value}`);
     meetingDetails.value = response.data;
-    console.log("会議の詳細:", response.data);
+    // console.log("会議の詳細:", response.data);
   } catch (error) {
     console.error("会議の詳細取得失敗:", error);
   } finally {
@@ -698,7 +716,7 @@ const fetchMinutes = async () => {
       isNewMinutes.value = false;
     }
 
-    console.log("📜 取得した議事録:", minutesData.value);
+    // console.log("📜 取得した議事録:", minutesData.value);
   } catch (error) {
     if (error.response?.status === 404) {
       console.warn("📜 議事録が存在しません。新規作成モードに入ります。");
@@ -762,7 +780,7 @@ const fetchReports = async () => {
       },
       content: parseContent(report.content)
     }));
-    console.log("進捗報告:", reports.value);
+    // console.log("進捗報告:", reports.value);
   } catch (error) {
     console.error("報告の取得失敗:", error);
   } finally {
@@ -804,12 +822,15 @@ const scrollInterval = ref(null); // 存储定时器 ID
 const clickedReports = ref(new Set());
 // ✅ 点击人名时，向后端获取该用户的最新报告
 const showReport = async (report) => {
-  if (!report.user_id) {  
+  if (!report.user_id) {
     console.error("❌ report.user_id 不存在", report);
     alert("報告のユーザーが無効です！");
     return;
   }
 
+  if (loadingReportId.value === report.id) return; // 防止重复点击
+
+  loadingReportId.value = report.id;
   loadingReport.value = true;
   selectedReport.value = null;
 
@@ -821,22 +842,22 @@ const showReport = async (report) => {
       user: response.data.user || { fullname: "Unknown", username: "Unknown" },
       reports: response.data.reports.map(r => ({
         id: r.id,
-        projects: parseContent(r.content) // ✅ 解析 JSON
+        projects: parseContent(r.content)
       }))
     };
 
     await fetchPreviousReport(report.user_id);
-
-    console.log("📄 取得した報告:", selectedReport.value);
-    loadingReport.value = false;
+    // await new Promise(resolve => setTimeout(resolve, 5000));
     clickedReports.value.add(report.id);
     showReportModal.value = true;
     await nextTick();
     await enterFullscreen();
   } catch (error) {
-    console.error("報告の取得失敗:", error);
+    console.error("報告の取得失敗:", error.response || error);
     alert("報告の取得に失敗しました");
+  } finally {
     loadingReport.value = false;
+    loadingReportId.value = null;
   }
 };
 
@@ -928,7 +949,7 @@ const highlightDiffBlock = (current, previous) => {
 
 
 const getPreviousFieldValue = (projectIndex, fieldTitle) => {
-  console.log("👀 previousReport.value:", previousReport.value);
+  // console.log("👀 previousReport.value:", previousReport.value);
   const prevProj = previousReport.value?.projects?.[projectIndex];
   if (!prevProj) return "";
   const matchedField = prevProj.fields?.find(f => f.title.trim() === fieldTitle.trim());
