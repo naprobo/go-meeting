@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import joinedload
@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional
 from utils.mattermost_notifier import send_message
+from utils.transcribe_whisper import transcribe_audio
 import json
 
 class MeetingCreate(BaseModel):
@@ -343,3 +344,28 @@ async def save_meeting_minutes(
     except Exception as e:
         print(f"Error saving: {str(e)}")
         raise HTTPException(status_code=500, detail="Server error")
+
+@router.post("/meetings/{meeting_id}/transcribe")
+async def transcribe_meeting_audio(
+    meeting_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    if not current_user:
+        raise HTTPException(status_code=401, detail="ログインが必要です")
+
+    meeting = await db.get(Meeting, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="会議が見つかりません")
+
+    if meeting.facilitator_id != current_user.id:
+        raise HTTPException(status_code=403, detail="録音を送信する権限がありません")
+
+    try:
+        audio_bytes = await file.read()
+        text = transcribe_audio(audio_bytes, file.filename)
+        return {"transcript": text}
+    except Exception as e:
+        print(f"❌ 音声認識失敗: {e}")
+        raise HTTPException(status_code=500, detail="音声の文字起こしに失敗しました")

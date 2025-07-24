@@ -837,6 +837,10 @@ const showReport = async (report) => {
   try {
     const response = await api.get(`/api/meetings/${meetingId.value}/reports/user/${report.user_id}`);
 
+    if (!response.data || !Array.isArray(response.data.reports)) {
+      throw new Error("報告データが不正です");
+    }
+
     selectedReport.value = {
       user_id: report.user_id, 
       user: response.data.user || { fullname: "Unknown", username: "Unknown" },
@@ -854,7 +858,9 @@ const showReport = async (report) => {
     await enterFullscreen();
   } catch (error) {
     console.error("報告の取得失敗:", error.response || error);
-    alert("報告の取得に失敗しました");
+    if (!selectedReport.value) {
+      alert("報告の取得に失敗しました");
+    }
   } finally {
     loadingReport.value = false;
     loadingReportId.value = null;
