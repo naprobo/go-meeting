@@ -88,14 +88,14 @@
                         {{ detail.delivery_status }}
                     </td>
                     <td>
-                      <v-icon size="20" color="primary" class="mr-2" @click="onEditDetail(detail, summary.id)"
-                        :disabled="detail.created_by !== user.id" :class="{ 'v-icon--disabled': detail.created_by !== user.id }">
-                        mdi-pencil
-                      </v-icon>
-                      <v-icon size="20" color="red" @click="confirmDeleteDetail(detail.id, summary.id)"
-                        :disabled="detail.created_by !== user.id" :class="{ 'v-icon--disabled': detail.created_by !== user.id }">
-                        mdi-delete
-                      </v-icon>
+                        <template v-if="detail.created_by === user.id">
+                            <v-icon size="20" color="primary" class="mr-2" @click="onEditDetail(detail, summary.id)">
+                                mdi-pencil
+                            </v-icon>
+                            <v-icon size="20" color="red" @click="confirmDeleteDetail(detail.id, summary.id)">
+                                mdi-delete
+                            </v-icon>
+                        </template>
                     </td>
                   </tr>
                   <tr v-if="detail.showExtra && hasExtraInfo(detail)">
