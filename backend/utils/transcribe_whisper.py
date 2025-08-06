@@ -11,5 +11,5 @@ def transcribe_audio(audio_bytes: bytes, filename: str = "audio.webm") -> str:
         tmp.flush()
 
         # Whisper 会自动处理格式、解码
-        result = model.transcribe(tmp.name)
+        result = model.transcribe(tmp.name, language="ja")
         return result.get("text", "")
