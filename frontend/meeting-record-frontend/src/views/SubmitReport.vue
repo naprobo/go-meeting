@@ -8,20 +8,31 @@
       📄 {{ isEditing ? "進捗報告を編集" : "進捗報告を提出" }}
     </h2>
 
-    <!-- ✅ 前回履歴読み込み -->
-    <v-btn
-      v-if="showLastReportReadBtn"
-      @click="loadLastReport"
-      prepend-icon="mdi-history"
-      color="warning"
-      class="mb-4"
-    >
-      前回の履歴から読み込む
-    </v-btn>
+    <!-- ✅ 前回履歴読み込み + 比較モード設定 -->
+    <v-row class="mb-4" align="center">
+      <v-col cols="auto">
+        <v-btn
+          v-if="showLastReportReadBtn"
+          @click="loadLastReport"
+          prepend-icon="mdi-history"
+          color="warning"
+        >
+          前回の履歴から読み込む
+        </v-btn>
+      </v-col>
+      <v-col cols="auto">
+        <v-checkbox
+          v-model="reportData.settings.useCompareMode"
+          label="会議時に比較モードで閲覧する"
+          density="compact"
+          hide-details
+        ></v-checkbox>
+      </v-col>
+    </v-row>
 
     <!-- ✅ 複数プロジェクト -->
     <v-card
-      v-for="(project, projectIndex) in reportData"
+      v-for="(project, projectIndex) in reportData.projects"
       :key="projectIndex"
       class="mb-6"
       variant="outlined"
@@ -158,11 +169,16 @@ const defaultFields = [
 ];
 
 // ✅ 先初始化 reportData，确保打开页面时有默认分类
-const reportData = ref([
-  {
-    fields: JSON.parse(JSON.stringify(defaultFields)) // 确保不会共享同一个对象
-  }
-]);
+const reportData = ref({
+  settings: {
+    useCompareMode: false, // ✅ 会議時に比較モードを使用する
+  },
+  projects: [
+    {
+      fields: JSON.parse(JSON.stringify(defaultFields))
+    }
+  ]
+});
 
 // ✅ 获取当前用户的会议报告（用于编辑）
 const fetchExistingReport = async () => {
@@ -175,10 +191,17 @@ const fetchExistingReport = async () => {
       // console.log("✅ 解析后的报告:", reportContent);
 
       // ✅ 确保数据是数组格式
-      if (Array.isArray(reportContent) && reportContent.length > 0) {
+      if (
+        reportContent &&
+        Array.isArray(reportContent.projects) &&
+        reportContent.projects.length > 0
+      ) {
         reportData.value = reportContent;
       } else {
-        reportData.value = [{ fields: JSON.parse(JSON.stringify(defaultFields)) }];
+        reportData.value = {
+          settings: { useCompareMode: false },
+          projects: [{ fields: JSON.parse(JSON.stringify(defaultFields)) }]
+        };
       }
 
       reportId.value = response.data.reports[0].id;
@@ -191,15 +214,15 @@ const fetchExistingReport = async () => {
 
 // ✅ 添加新的项目
 const addNewProject = () => {
-  reportData.value.push({
+  reportData.value.projects.push({
     fields: JSON.parse(JSON.stringify(defaultFields))
   });
 };
 
 // ✅ 删除某个项目
 const removeProject = (index) => {
-  if (reportData.value.length > 1) {
-    reportData.value.splice(index, 1);
+  if (reportData.value.projects.length > 1) {
+    reportData.value.projects.splice(index, 1);
   }
 };
 
@@ -207,7 +230,10 @@ const removeProject = (index) => {
 const addNewField = (projectIndex) => {
   const newFieldTitle = prompt("新しいカテゴリの名前を入力してください");
   if (newFieldTitle) {
-    reportData.value[projectIndex].fields.push({ title: newFieldTitle, value: "" });
+    reportData.value.projects[projectIndex].fields.push({
+      title: newFieldTitle,
+      value: ""
+    });
   }
 };
 
@@ -249,23 +275,67 @@ const closeAndReturn = () => {
   router.push(`/meeting/${meeting_id}`);
 };
 
+const parseContent = (content) => {
+  if (!content) return { settings: {}, projects: [] };
+
+  try {
+    const parsed = typeof content === "string" ? JSON.parse(content) : content;
+
+    // ✅ 新结构（带 settings 和 projects）
+    if (parsed && Array.isArray(parsed.projects)) {
+      return {
+        settings: parsed.settings || {},
+        projects: parsed.projects.map(p => ({
+          fields: p.fields || []
+        }))
+      };
+    }
+
+    // ✅ 老结构（直接是 projects 数组）
+    if (Array.isArray(parsed)) {
+      return {
+        settings: {},
+        projects: parsed.map(p => ({
+          fields: p.fields || []
+        }))
+      };
+    }
+
+    // fallback
+    return { settings: {}, projects: [] };
+  } catch (e) {
+    console.error("❌ JSON 解析失败:", content);
+    return { settings: {}, projects: [] };
+  }
+};
+
 // ✅ 从后端获取最近一次的会议报告
 const loadLastReport = async () => {
   try {
     const response = await api.get(`/api/reports/last/${user_id}`);
-    
+
     if (response.data && response.data.report) {
       const lastReportContent = JSON.parse(response.data.report.content);
       console.log("📂 過去のレポート:", lastReportContent);
 
-      // ✅ 确保数据是数组格式
-      if (Array.isArray(lastReportContent) && lastReportContent.length > 0) {
-        reportData.value = lastReportContent;
+      // ✅ 使用 parseContent 兼容老/新格式
+      const parsed = parseContent(lastReportContent);
+
+      // ✅ 判断是否有内容（projects 非空）
+      if (parsed.projects.length > 0) {
+        reportData.value = {
+          settings: parsed.settings,
+          projects: parsed.projects
+        };
       } else {
-        reportData.value = [{ fields: JSON.parse(JSON.stringify(defaultFields)) }];
+        reportData.value = {
+          settings: { useCompareMode: false },
+          projects: [{ fields: JSON.parse(JSON.stringify(defaultFields)) }]
+        };
       }
 
       snackbarText.value = `履歴（会議ID: ${response.data.report.meeting_id}）が読み込まれました！`;
+      snackbarColor.value = "success";
       snackbar.value = true;
     } else {
       snackbarText.value = `過去の報告は見つかりませんでした。`;
@@ -280,10 +350,11 @@ const loadLastReport = async () => {
   }
 };
 
-// ✅ 删除某个分类（字段）
 const removeField = (projectIndex, fieldIndex) => {
-  if (reportData.value[projectIndex].fields.length > 1) {
-    reportData.value[projectIndex].fields.splice(fieldIndex, 1);
+  const fields = reportData.value.projects[projectIndex].fields;
+
+  if (fields.length > 1) {
+    fields.splice(fieldIndex, 1);
   } else {
     snackbarText.value = "最後のカテゴリは削除できません！";
     snackbarColor.value = "error";

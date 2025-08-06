@@ -100,6 +100,21 @@
           </div>
         </div>
       </v-col>
+
+      <v-col cols="12" md="2">
+        <div class="d-flex align-center">
+          <v-icon class="mr-2" color="primary">mdi-record-rec</v-icon>
+          <div>
+            <div v-if="isRecording" class="text-red">
+              🎙 録音中… {{ formattedTime }}
+            </div>
+            <div v-if="transcribeStatus">
+              {{ transcribeStatus }}
+            </div>
+          </div>
+        </div>
+      </v-col>
+
     </v-row>
 
     <!-- 操作按钮区域 -->
@@ -515,6 +530,20 @@ const showMinutesEdit = ref(false);  // ✅ 控制【编辑模式】弹窗
 
 const loadingReportId = ref(null);
 
+const isRecording = ref(false)
+const recordingTime = ref(0)
+const recordingTimer = ref(null)
+const transcribeStatus = ref('')
+let mediaRecorder = null
+let audioChunks = []
+
+const formattedTime = computed(() => {
+  const hours = String(Math.floor(recordingTime.value / 3600)).padStart(2, '0')
+  const minutes = String(Math.floor((recordingTime.value % 3600) / 60)).padStart(2, '0')
+  const seconds = String(recordingTime.value % 60).padStart(2, '0')
+  return `${hours}:${minutes}:${seconds}`
+})
+
 const userOptions = computed(() =>
   users.value.map(user => ({
     id: user.id,
@@ -614,34 +643,69 @@ watch(meetingDetails, (newVal) => {
 
 const startMeeting = async () => {
   try {
-    const response = await api.post(`/api/meetings/${meetingId.value}/start`);
-    meetingDetails.value.status = response.data.status; // ✅ 更新状态
-    // alert("会議を開始しました！");
+    const response = await api.post(`/api/meetings/${meetingId.value}/start`)
+    meetingDetails.value.status = response.data.status
+
+    // ✅ 开始录音
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    mediaRecorder = new MediaRecorder(stream)
+    audioChunks = []
+
+    mediaRecorder.ondataavailable = e => audioChunks.push(e.data)
+
+    mediaRecorder.start()
+    isRecording.value = true
+    recordingTime.value = 0
+
+    // ⏱️ 录音时间计数
+    recordingTimer.value = setInterval(() => {
+      recordingTime.value++
+    }, 1000)
+
   } catch (error) {
-    console.error("会議の開始に失敗:", error);
-    alert(error.response?.data?.detail || "会議の開始に失敗しました");
+    console.error("会議の開始に失敗:", error)
+    alert(error.response?.data?.detail || "会議の開始に失敗しました")
   }
-};
+}
 
 const endMeeting = async () => {
-  // 🚨 显示警告弹窗
-  const userConfirmed = confirm(
-    "⚠️ この会議を終了してもよろしいですか？\n\n終了後は、進捗報告の編集ができなくなります。\n（※議事録の編集は可能です）"
-  );
-
-  if (!userConfirmed) {
-    return; // ❌ 用户取消，则不执行后续代码
-  }
-
   try {
-    const response = await api.post(`/api/meetings/${meetingId.value}/end`);
-    meetingDetails.value.status = response.data.status; // ✅ 更新状态
-    // alert("会議を終了しました！");
+    const response = await api.post(`/api/meetings/${meetingId.value}/end`)
+    meetingDetails.value.status = response.data.status
+
+    // ✅ 停止录音
+    if (mediaRecorder && isRecording.value) {
+      mediaRecorder.onstop = async () => {
+        clearInterval(recordingTimer.value)
+        isRecording.value = false
+
+        const blob = new Blob(audioChunks, { type: 'audio/webm' })
+        const formData = new FormData()
+        formData.append('file', blob, 'recording.webm')
+
+        transcribeStatus.value = '⏳ 転送中...'
+
+        try {
+          const res = await api.post(
+            `/api/meetings/${meetingId.value}/transcribe`,
+            formData,
+            { headers: { 'Content-Type': 'multipart/form-data' } }
+          )
+          transcribeStatus.value = '✅ 転写完了'
+        } catch (err) {
+          console.error(err)
+          transcribeStatus.value = '❌ 転写失敗'
+        }
+      }
+
+      mediaRecorder.stop()
+    }
+
   } catch (error) {
-    console.error("会議の終了に失敗:", error);
-    alert(error.response?.data?.detail || "会議の終了に失敗しました");
+    console.error("会議の終了に失敗:", error)
+    alert(error.response?.data?.detail || "会議の終了に失敗しました")
   }
-};
+}
 
 // ✅ 格式化日期
 const formatDateTime = (dateString) => {
@@ -790,23 +854,37 @@ const fetchReports = async () => {
 
 // ✅ 解析 JSON 并处理异常
 const parseContent = (content) => {
-  if (!content) return [];
+  if (!content) return { settings: {}, projects: [] };
 
   try {
     const parsed = typeof content === "string" ? JSON.parse(content) : content;
 
-    // ✅ 确保数据格式正确
-    if (!Array.isArray(parsed)) {
-      console.error("❌ JSON 格式错误，期望数组:", parsed);
-      return [];
+    // ✅ 新结构（包含 settings & projects）
+    if (parsed && Array.isArray(parsed.projects)) {
+      return {
+        settings: parsed.settings || {},
+        projects: parsed.projects.map(p => ({
+          fields: p.fields || []
+        }))
+      };
     }
 
-    return parsed.map(project => ({
-      fields: project.fields || [] // 兼容可能缺失 `fields`
-    }));
+    // ✅ 旧结构（直接是项目数组）
+    if (Array.isArray(parsed)) {
+      return {
+        settings: {},
+        projects: parsed.map(p => ({
+          fields: p.fields || []
+        }))
+      };
+    }
+
+    // fallback
+    return { settings: {}, projects: [] };
+
   } catch (e) {
     console.error("❌ JSON 解析失败:", content);
-    return [];
+    return { settings: {}, projects: [] };
   }
 };
 
@@ -844,10 +922,14 @@ const showReport = async (report) => {
     selectedReport.value = {
       user_id: report.user_id, 
       user: response.data.user || { fullname: "Unknown", username: "Unknown" },
-      reports: response.data.reports.map(r => ({
-        id: r.id,
-        projects: parseContent(r.content)
-      }))
+      reports: response.data.reports.map(r => {
+        const parsed = parseContent(r.content);
+        return {
+          id: r.id,
+          settings: parsed.settings,
+          projects: parsed.projects
+        };
+      })
     };
 
     await fetchPreviousReport(report.user_id);
@@ -977,9 +1059,11 @@ const fetchPreviousReport = async (userId) => {
     const reportData = response.data.report; // ✅ 取出正确字段
 
     if (reportData && reportData.content) {
+      const parsed = parseContent(reportData.content);
       previousReport.value = {
         id: reportData.id,
-        projects: parseContent(reportData.content),
+        settings: parsed.settings,
+        projects: parsed.projects,
       };
     } else {
       console.warn("⚠️ 前回報告データが存在しません");
@@ -993,7 +1077,10 @@ const fetchPreviousReport = async (userId) => {
   }
 };
 
-const isComparisonMode = ref(false);
+const isComparisonMode = computed(() => {
+  return !!selectedReport.value?.reports?.[0]?.settings?.useCompareMode;
+});
+
 const toggleComparison = () => {
   if (!isComparisonMode.value) {
     isComparisonMode.value = true;
@@ -1004,8 +1091,8 @@ const toggleComparison = () => {
 
 const isFullscreen = ref(false);
 
-const formatReportText = (projects) => {
-  if (!Array.isArray(projects)) return "";
+const formatReportText = (reportData) => {
+  const projects = reportData.projects || [];
 
   return projects.map(project => {
     const fields = project.fields || [];
